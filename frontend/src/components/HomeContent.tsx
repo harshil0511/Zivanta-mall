@@ -15,6 +15,7 @@ import type { Brand, Category, Offer, PromotionalCampaign, FlashSale } from '@/t
 import CategorySection from './CategorySection'
 import FeaturedSlider from './FeaturedSlider'
 import BrandsSection from './BrandsSection'
+import ShopSection from './ShopSection'
 
 export default function HomeContent() {
   const router = useRouter()
@@ -127,6 +128,9 @@ export default function HomeContent() {
 
       {/* ── POPULAR CATEGORIES ──────────────────────────────────────────────── */}
       <CategorySection categories={categories} />
+
+      {/* ── SHOPPABLE PRODUCT GRID ──────────────────────────────────────────── */}
+      <ShopSection brands={activeBrands} />
 
       {/* ── FEATURED OFFERS SECTION ─────────────────────────────────────────── */}
       {featuredOffers.length > 0 && (

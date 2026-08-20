@@ -672,7 +672,19 @@ function BrandsTab({ brands, selectedBrand, isEditing, onSelect, onEditChange, t
   const openEdit = (b: Brand | null) => {
     onSelect(b)
     onEditChange(true)
-    setFormData(b ? { ...b } : { id: '', name: '', floor: 'Level 1', type: 'Fashion', description: '', featured: false, priority: 0, is_active: true, products: [] })
+    // Deep-copy the products so edits stay local until the form is saved.
+    setFormData(
+      b
+        ? { ...b, products: (b.products || []).map((p) => ({ ...p })) }
+        : { id: '', name: '', floor: 'Level 1', type: 'Fashion', description: '', featured: false, priority: 0, is_active: true, products: [] },
+    )
+  }
+
+  const updateProduct = (idx: number, patch: Partial<Product>) => {
+    setFormData((prev) => ({
+      ...prev,
+      products: (prev.products || []).map((p, i) => (i === idx ? { ...p, ...patch } : p)),
+    }))
   }
 
   const handleSave = async () => {
@@ -680,8 +692,13 @@ function BrandsTab({ brands, selectedBrand, isEditing, onSelect, onEditChange, t
       toast.error('ID and Name are required!')
       return
     }
+    const products = formData.products || []
+    if (products.some((p) => !p.name.trim())) {
+      toast.error('Every product needs a name (or remove the empty card).')
+      return
+    }
     const cleanId = formData.id.toLowerCase().replace(/[^a-z0-9-]/g, '')
-    const payload = { ...formData, id: cleanId }
+    const payload = { ...formData, id: cleanId, products }
 
     const loadingToast = toast.loading('Saving brand info...')
     try {
@@ -858,13 +875,25 @@ function BrandsTab({ brands, selectedBrand, isEditing, onSelect, onEditChange, t
           {/* Product row editors */}
           <div className="border-t border-[rgba(201,168,76,0.12)] pt-6 space-y-4">
             <div className="flex justify-between items-center">
-              <h4 className="font-serif text-lg">Products Grid</h4>
+              <div>
+                <h4 className="font-serif text-lg">Products Grid</h4>
+                <p className="text-xs text-text-muted">
+                  {(formData.products || []).length} product{(formData.products || []).length === 1 ? '' : 's'} · saved when you press “Save Brand”
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => {
-                  const arr = [...(formData.products || [])]
-                  arr.push({ id: `p-${Date.now()}`, brand_id: formData.id || '', name: '', price: '$', rating: 5, category: formData.type || '', image: '' })
-                  setFormData({ ...formData, products: arr })
+                  const newProduct: Product = {
+                    id: `p-${formData.id || 'brand'}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+                    brand_id: formData.id || '',
+                    name: '',
+                    price: '$',
+                    rating: 5,
+                    category: formData.type || '',
+                    image: '',
+                  }
+                  setFormData((prev) => ({ ...prev, products: [...(prev.products || []), newProduct] }))
                 }}
                 className="btn-gold flex items-center gap-2 text-xs py-1.5 px-4"
               >
@@ -878,10 +907,13 @@ function BrandsTab({ brands, selectedBrand, isEditing, onSelect, onEditChange, t
                   <button
                     type="button"
                     onClick={() => {
-                      const arr = (formData.products || []).filter((_, i) => i !== idx)
-                      setFormData({ ...formData, products: arr })
+                      setFormData((prev) => ({
+                        ...prev,
+                        products: (prev.products || []).filter((_, i) => i !== idx),
+                      }))
                     }}
                     className="absolute top-2 right-2 p-1.5 text-red-400 hover:text-red-300 transition"
+                    title="Remove product"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -891,44 +923,54 @@ function BrandsTab({ brands, selectedBrand, isEditing, onSelect, onEditChange, t
                       type="text"
                       placeholder="Product Name"
                       value={prod.name}
-                      onChange={(e) => {
-                        const arr = [...(formData.products || [])]
-                        arr[idx].name = e.target.value
-                        setFormData({ ...formData, products: arr })
-                      }}
+                      onChange={(e) => updateProduct(idx, { name: e.target.value })}
                       className="bg-[#14122E] border border-[rgba(201,168,76,0.1)] rounded-lg p-2 text-xs outline-none"
                     />
                     <input
                       type="text"
                       placeholder="Price (e.g. $250)"
                       value={prod.price}
-                      onChange={(e) => {
-                        const arr = [...(formData.products || [])]
-                        arr[idx].price = e.target.value
-                        setFormData({ ...formData, products: arr })
-                      }}
+                      onChange={(e) => updateProduct(idx, { price: e.target.value })}
                       className="bg-[#14122E] border border-[rgba(201,168,76,0.1)] rounded-lg p-2 text-xs outline-none"
                     />
                   </div>
-                  <div className="flex gap-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      placeholder="Category (e.g. Bags)"
+                      value={prod.category}
+                      onChange={(e) => updateProduct(idx, { category: e.target.value })}
+                      className="bg-[#14122E] border border-[rgba(201,168,76,0.1)] rounded-lg p-2 text-xs outline-none"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      max={5}
+                      step={0.1}
+                      placeholder="Rating"
+                      value={prod.rating}
+                      onChange={(e) => updateProduct(idx, { rating: Math.min(5, Math.max(0, parseFloat(e.target.value) || 0)) })}
+                      className="bg-[#14122E] border border-[rgba(201,168,76,0.1)] rounded-lg p-2 text-xs outline-none"
+                    />
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    {prod.image ? (
+                      <img src={prod.image} alt="" className="w-10 h-10 rounded-lg object-cover border border-[rgba(201,168,76,0.15)]" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg border border-dashed border-[rgba(201,168,76,0.2)] flex items-center justify-center text-[10px] text-text-muted">
+                        IMG
+                      </div>
+                    )}
                     <input
                       type="text"
                       placeholder="Image URL"
                       value={prod.image}
-                      onChange={(e) => {
-                        const arr = [...(formData.products || [])]
-                        arr[idx].image = e.target.value
-                        setFormData({ ...formData, products: arr })
-                      }}
+                      onChange={(e) => updateProduct(idx, { image: e.target.value })}
                       className="flex-1 bg-[#14122E] border border-[rgba(201,168,76,0.1)] rounded-lg p-2 text-xs outline-none"
                     />
                     <button
-                      onClick={() => openMedia((url) => {
-                        const arr = [...(formData.products || [])]
-                        arr[idx].image = url
-                        setFormData({ ...formData, products: arr })
-                      })}
-                      className="bg-[rgba(201,168,76,0.06)] border border-[rgba(201,168,76,0.15)] px-2.5 rounded-lg text-xs"
+                      onClick={() => openMedia((url) => updateProduct(idx, { image: url }))}
+                      className="bg-[rgba(201,168,76,0.06)] border border-[rgba(201,168,76,0.15)] px-2.5 py-2 rounded-lg text-xs"
                     >
                       Pick
                     </button>

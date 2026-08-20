@@ -1,7 +1,9 @@
-from typing import List, Optional
+import re
+import uuid
+from typing import Iterable, List, Optional, Set
 from src.domain.entities.brand import Brand, Product
 from src.domain.ports.brand_repository import BrandRepository
-from src.application.dtos.brand_dto import CreateBrandDTO, UpdateBrandDTO, BrandResponseDTO
+from src.application.dtos.brand_dto import CreateBrandDTO, ProductDTO, UpdateBrandDTO, BrandResponseDTO
 
 
 class BrandService:
@@ -33,19 +35,7 @@ class BrandService:
         )
         saved = self._repo.save(brand)
 
-        # Save products
-        self._repo.delete_products_by_brand(saved.id)
-        for p in dto.products:
-            product = Product(
-                id=p.id or f"p-{saved.id}-{len(saved.products)}",
-                brand_id=saved.id,
-                name=p.name,
-                price=p.price,
-                rating=p.rating,
-                category=p.category,
-                image=p.image,
-            )
-            self._repo.save_product(product)
+        self._sync_products(saved.id, dto.products)
 
         return self._to_dto(self._repo.find_by_id(saved.id))
 
@@ -68,10 +58,30 @@ class BrandService:
         self._repo.save(brand)
 
         if dto.products is not None:
-            self._repo.delete_products_by_brand(brand_id)
-            for p in dto.products:
-                product = Product(
-                    id=p.id or f"p-{brand_id}-{p.name[:4]}",
+            self._sync_products(brand_id, dto.products)
+
+        return self._to_dto(self._repo.find_by_id(brand_id))
+
+    def _sync_products(self, brand_id: str, products: Iterable[ProductDTO]) -> None:
+        """Persist the submitted products as the brand's full catalogue.
+
+        Rows that are still present are updated in place so records that
+        reference them (flash sales, offers) survive the edit; only rows that
+        were dropped from the submission are deleted.
+        """
+        brand = self._repo.find_by_id(brand_id)
+        existing_ids = {p.id for p in brand.products} if brand else set()
+        kept_ids: Set[str] = set()
+
+        for p in products:
+            if not p.name.strip():
+                continue
+            product_id = p.id or self._generate_product_id(
+                brand_id, p.name, existing_ids | kept_ids
+            )
+            self._repo.save_product(
+                Product(
+                    id=product_id,
                     brand_id=brand_id,
                     name=p.name,
                     price=p.price,
@@ -79,9 +89,24 @@ class BrandService:
                     category=p.category,
                     image=p.image,
                 )
-                self._repo.save_product(product)
+            )
+            kept_ids.add(product_id)
 
-        return self._to_dto(self._repo.find_by_id(brand_id))
+        for stale_id in existing_ids - kept_ids:
+            self._repo.delete_product(stale_id)
+
+    @staticmethod
+    def _generate_product_id(brand_id: str, name: str, taken: Set[str]) -> str:
+        slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40] or "item"
+        candidate = f"p-{brand_id}-{slug}"
+        suffix = 2
+        while candidate in taken:
+            candidate = f"p-{brand_id}-{slug}-{suffix}"
+            suffix += 1
+            if suffix > 50:
+                candidate = f"p-{brand_id}-{uuid.uuid4().hex[:8]}"
+                break
+        return candidate
 
     def delete(self, brand_id: str) -> bool:
         brand = self._repo.find_by_id(brand_id)
@@ -92,7 +117,6 @@ class BrandService:
 
     @staticmethod
     def _to_dto(brand: Brand) -> BrandResponseDTO:
-        from src.application.dtos.brand_dto import ProductDTO
         return BrandResponseDTO(
             id=brand.id,
             name=brand.name,

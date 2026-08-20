@@ -27,7 +27,12 @@ export default function CartDrawer() {
     setCartOpen(false)
   }
 
-  const inputStyle = 'w-full px-4 py-3 rounded-xl bg-bg-card border border-[rgba(201,168,76,0.15)] text-text-primary text-sm placeholder:text-text-muted outline-none focus:border-gold transition'
+  const money = (v: number) => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const lineTotal = (price: string, qty: number) => (parseFloat(String(price).replace(/[$,]/g, '')) || 0) * qty
+
+  const FREE_SHIPPING_THRESHOLD = 500
+  const shipping = total === 0 || total >= FREE_SHIPPING_THRESHOLD ? 0 : 25
+  const tax = total * 0.08
 
   return (
     <AnimatePresence>
@@ -66,6 +71,7 @@ export default function CartDrawer() {
                     <ShoppingBag size={48} style={{ color: 'var(--text-light)' }} />
                     <p className="text-text-muted font-medium">Your cart is empty</p>
                     <span className="text-text-light text-sm">Add items from our brand stores</span>
+                    <button className="btn-gold mt-2 text-sm" onClick={() => setCartOpen(false)}>Continue shopping</button>
                   </motion.div>
                 ) : (
                   cart.map(item => (
@@ -82,20 +88,26 @@ export default function CartDrawer() {
                       <div className="flex-1 min-w-0">
                         <p className="text-text-primary text-sm font-medium truncate">{item.name}</p>
                         <p className="text-text-muted text-xs mt-0.5">{item.brandName}</p>
-                        <p className="text-gold text-sm font-semibold mt-1">{item.price}</p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <button className="w-6 h-6 flex items-center justify-center rounded-md bg-bg-accent text-text-secondary hover:text-gold transition-colors"
-                            onClick={() => updateQuantity(item.id, item.quantity - 1)}>
-                            <Minus size={12} />
-                          </button>
-                          <span className="text-text-primary text-sm w-6 text-center">{item.quantity}</span>
-                          <button className="w-6 h-6 flex items-center justify-center rounded-md bg-bg-accent text-text-secondary hover:text-gold transition-colors"
-                            onClick={() => updateQuantity(item.id, item.quantity + 1)}>
-                            <Plus size={12} />
-                          </button>
+                        <p className="text-text-light text-xs mt-1">{item.price} each</p>
+                        <div className="flex items-center justify-between gap-2 mt-2">
+                          <div className="flex items-center gap-2">
+                            <button className="w-6 h-6 flex items-center justify-center rounded-md bg-bg-accent text-text-secondary hover:text-gold transition-colors"
+                              onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                              aria-label={`Decrease quantity of ${item.name}`}>
+                              <Minus size={12} />
+                            </button>
+                            <span className="text-text-primary text-sm w-6 text-center">{item.quantity}</span>
+                            <button className="w-6 h-6 flex items-center justify-center rounded-md bg-bg-accent text-text-secondary hover:text-gold transition-colors"
+                              onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                              aria-label={`Increase quantity of ${item.name}`}>
+                              <Plus size={12} />
+                            </button>
+                          </div>
+                          <span className="text-gold text-sm font-semibold">{money(lineTotal(item.price, item.quantity))}</span>
                         </div>
                       </div>
                       <button className="text-text-light hover:text-red-400 transition-colors self-start mt-1"
+                        aria-label={`Remove ${item.name} from cart`}
                         onClick={() => removeFromCart(item.id)}>
                         <Trash2 size={16} />
                       </button>
@@ -107,19 +119,41 @@ export default function CartDrawer() {
 
             {/* Footer */}
             {cart.length > 0 && (
-              <div className="px-6 py-5 border-t border-[rgba(201,168,76,0.1)]">
-                <div className="flex items-center justify-between mb-1">
+              <div className="px-6 py-5 border-t border-[rgba(201,168,76,0.1)] space-y-1">
+                <div className="flex items-center justify-between">
                   <span className="text-text-secondary text-sm">Subtotal ({itemCount} item{itemCount !== 1 ? 's' : ''})</span>
-                  <span className="text-text-primary font-semibold">${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                  <span className="text-text-primary text-sm">{money(total)}</span>
                 </div>
-                <p className="text-text-light text-xs mb-4">Taxes and shipping calculated at checkout</p>
-                <button className="btn-gold w-full justify-center mb-2" onClick={handleCheckout}>
+                <div className="flex items-center justify-between">
+                  <span className="text-text-secondary text-sm">Estimated tax</span>
+                  <span className="text-text-primary text-sm">{money(tax)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-text-secondary text-sm">Delivery</span>
+                  <span className="text-text-primary text-sm">{shipping === 0 ? 'Complimentary' : money(shipping)}</span>
+                </div>
+                {shipping > 0 && (
+                  <p className="text-text-light text-xs pt-1">
+                    Add {money(FREE_SHIPPING_THRESHOLD - total)} more for complimentary delivery.
+                  </p>
+                )}
+                <div className="flex items-center justify-between pt-3 mt-2 border-t border-[rgba(201,168,76,0.1)]">
+                  <span className="text-text-primary font-medium">Total</span>
+                  <span className="text-gold text-lg font-semibold">{money(total + tax + shipping)}</span>
+                </div>
+                <button className="btn-gold w-full justify-center mt-4 mb-2" onClick={handleCheckout}>
                   Proceed to Checkout
                 </button>
-                <button className="text-text-muted hover:text-text-secondary text-sm w-full text-center py-1 transition-colors"
-                  onClick={clearCart}>
-                  Clear cart
-                </button>
+                <div className="flex items-center justify-between">
+                  <button className="text-text-muted hover:text-text-secondary text-xs py-1 transition-colors"
+                    onClick={() => setCartOpen(false)}>
+                    Continue shopping
+                  </button>
+                  <button className="text-text-muted hover:text-red-400 text-xs py-1 transition-colors"
+                    onClick={clearCart}>
+                    Clear cart
+                  </button>
+                </div>
               </div>
             )}
           </motion.div>

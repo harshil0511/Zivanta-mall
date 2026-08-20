@@ -15,30 +15,34 @@ export default function BrandPage() {
   const router      = useRouter()
   const { brands, loading } = useStore()
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen" style={{ background: 'var(--bg-primary)' }}>
-        <div className="text-center">
-          <div className="w-10 h-10 rounded-full border-2 border-gold border-t-transparent mx-auto mb-4"
-            style={{ animation: 'spin 0.8s linear infinite' }} />
-          <p className="text-text-muted text-sm">Loading…</p>
-        </div>
-      </div>
-    )
-  }
-
   const brand = brands.find(b => b.id === brandId)
-  if (!brand && !loading) {
-    router.replace('/')
-    return null
-  }
+
+  useEffect(() => {
+    if (!loading && !brand) router.replace('/')
+  }, [loading, brand, router])
 
   return (
     <>
+      {/* Mounted unconditionally so the catalogue also loads on a direct visit or refresh. */}
       <DataProvider />
       <div style={{ background: 'var(--bg-primary)', minHeight: '100vh' }}>
         <Header />
-        {brand && <ProductGallery brand={brand} onBack={() => router.back()} />}
+        {loading ? (
+          <div className="flex items-center justify-center" style={{ minHeight: '80vh' }}>
+            <div className="text-center">
+              <div className="w-10 h-10 rounded-full border-2 border-gold border-t-transparent mx-auto mb-4"
+                style={{ animation: 'spin 0.8s linear infinite' }} />
+              <p className="text-text-muted text-sm">Loading…</p>
+            </div>
+          </div>
+        ) : brand ? (
+          <ProductGallery brand={brand} onBack={() => router.push('/')} />
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: '80vh' }}>
+            <p className="font-serif text-2xl text-text-primary">Store not found</p>
+            <p className="text-text-muted text-sm">Taking you back to the directory…</p>
+          </div>
+        )}
         <Footer />
         <CartDrawer />
         <WishlistDrawer />

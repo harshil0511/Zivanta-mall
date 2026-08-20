@@ -12,9 +12,11 @@ export default function Header() {
   const [scrolled, setScrolled] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
-  const { cart, wishlist, setCartOpen, setWishlistOpen, setSearchOpen } = useStore()
-  const cartCount     = cart.reduce((s, i) => s + i.quantity, 0)
-  const wishlistCount = wishlist.length
+  const { cart, wishlist, hydrated, setCartOpen, setWishlistOpen, setSearchOpen } = useStore()
+  // Counts come from persisted storage, so they stay hidden until rehydration
+  // to keep the server-rendered markup and the first client render identical.
+  const cartCount     = hydrated ? cart.reduce((s, i) => s + i.quantity, 0) : 0
+  const wishlistCount = hydrated ? wishlist.length : 0
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40)

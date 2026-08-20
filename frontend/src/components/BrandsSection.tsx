@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import toast from 'react-hot-toast'
 import useStore from '@/store/useStore'
 import type { Brand, Offer } from '@/types'
@@ -91,67 +91,8 @@ export default function BrandsSection({ brands, offers = [], onBrandSelect }: Br
     })
   }, [brands, search, activeFilter])
 
-  const brandContainerRef = useRef<HTMLDivElement>(null)
-  const [brandsHovered, setBrandsHovered] = useState(false)
-  const brandsMouseDownRef = useRef(false)
-  const brandsStartXRef = useRef(0)
-  const brandsScrollLeftRef = useRef(0)
-  const brandsStartPageXRef = useRef(0)
-
-  useEffect(() => {
-    const container = brandContainerRef.current
-    if (!container) return
-    let rafId: number
-    const tick = () => {
-      if (!brandsHovered && !brandsMouseDownRef.current) {
-        container.scrollLeft += 0.5
-        const secondSetChild = container.children[filteredBrands.length] as HTMLElement
-        if (secondSetChild) {
-          const oneSetWidth = secondSetChild.offsetLeft
-          if (container.scrollLeft >= oneSetWidth) {
-            container.scrollLeft -= oneSetWidth
-          }
-        }
-      }
-      rafId = requestAnimationFrame(tick)
-    }
-    rafId = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(rafId)
-  }, [brandsHovered, filteredBrands.length])
-
-  // Mouse wheel horizontal scrolling redirect
-  useEffect(() => {
-    const container = brandContainerRef.current
-    if (!container) return
-    const handleWheel = (e: WheelEvent) => {
-      if (e.deltaY !== 0) {
-        e.preventDefault()
-        container.scrollLeft += e.deltaY * 0.8
-      }
-    }
-    container.addEventListener('wheel', handleWheel, { passive: false })
-    return () => {
-      container.removeEventListener('wheel', handleWheel)
-    }
-  }, [])
-
-  const handleBrandsMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    const c = brandContainerRef.current
-    if (!c) return
-    brandsMouseDownRef.current = true
-    brandsStartPageXRef.current = e.pageX
-    brandsStartXRef.current = e.pageX - c.offsetLeft
-    brandsScrollLeftRef.current = c.scrollLeft
-  }
-  const handleBrandsMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!brandsMouseDownRef.current) return
-    e.preventDefault()
-    const c = brandContainerRef.current
-    if (!c) return
-    const x = e.pageX - c.offsetLeft
-    c.scrollLeft = brandsScrollLeftRef.current - (x - brandsStartXRef.current) * 1.5
-  }
-  const handleBrandsMouseUpOrLeave = () => { brandsMouseDownRef.current = false }
+  const [showAll, setShowAll] = useState(false)
+  const visibleBrands = showAll ? filteredBrands : filteredBrands.slice(0, 8)
 
   const marqueeText = [...MARQUEE_NAMES, ...MARQUEE_NAMES].join('  ·  ')
 
@@ -219,22 +160,10 @@ export default function BrandsSection({ brands, offers = [], onBrandSelect }: Br
           ))}
         </div>
 
-        {/* Brands — horizontal marquee row */}
+        {/* Brands — responsive directory grid */}
         {filteredBrands.length > 0 ? (
-          <div
-            ref={brandContainerRef}
-            onMouseEnter={() => setBrandsHovered(true)}
-            onMouseLeave={() => { setBrandsHovered(false); handleBrandsMouseUpOrLeave() }}
-            onMouseDown={handleBrandsMouseDown}
-            onMouseMove={handleBrandsMouseMove}
-            onMouseUp={handleBrandsMouseUpOrLeave}
-            className={`flex gap-4 overflow-x-auto pb-4 mb-14 custom-scrollbar select-none cursor-grab active:cursor-grabbing w-full ${
-              brandsHovered ? 'snap-x snap-mandatory' : 'snap-none'
-            }`}
-            style={{ scrollBehavior: brandsHovered ? 'smooth' : 'auto' }}
-          >
-            {/* Triple the items for seamless infinite scroll */}
-            {[...filteredBrands, ...filteredBrands, ...filteredBrands].map((brand, idx) => {
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+            {visibleBrands.map((brand) => {
               const brandOffers = offers?.filter(o => o.brand_id === brand.id && o.is_active !== false) || []
               const hasOffer = brandOffers.length > 0
               let bestOfferTag = null
@@ -255,14 +184,16 @@ export default function BrandsSection({ brands, offers = [], onBrandSelect }: Br
                 }
               }
 
+              const productCount = brand.products?.length ?? 0
+
               return (
                 <div
-                  key={`${brand.id}-${idx}`}
-                  onClick={(e) => {
-                    if (Math.abs(e.pageX - brandsStartPageXRef.current) > 5) return
-                    onBrandSelect(brand.id)
-                  }}
-                  className="group flex flex-col w-44 h-60 flex-shrink-0 snap-start rounded-2xl bg-bg-card border border-[rgba(201,168,76,0.1)] cursor-pointer hover:border-[rgba(201,168,76,0.45)] hover:-translate-y-1 transition-all duration-250 overflow-hidden relative"
+                  key={brand.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onBrandSelect(brand.id)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') onBrandSelect(brand.id) }}
+                  className="group flex flex-col rounded-2xl bg-bg-card border border-[rgba(201,168,76,0.1)] cursor-pointer hover:border-[rgba(201,168,76,0.45)] hover:-translate-y-1 transition-all duration-250 overflow-hidden relative"
                 >
                   {/* Offer Badge Overlay */}
                   {bestOfferTag && (
@@ -271,35 +202,52 @@ export default function BrandsSection({ brands, offers = [], onBrandSelect }: Br
                       <span>{bestOfferTag}</span>
                     </div>
                   )}
-                {/* Card header — monogram block */}
+                {/* Card header — cover image or monogram block */}
                 <div
-                  className="flex items-center justify-center h-32 flex-shrink-0"
+                  className="relative flex items-center justify-center h-36 flex-shrink-0 overflow-hidden"
                   style={{ background: 'linear-gradient(135deg, #110F2A 0%, #1A1840 100%)' }}
                 >
-                  <div className="flex flex-col items-center gap-1">
-                    <span
-                      className="font-serif text-4xl leading-none group-hover:scale-110 transition-transform duration-300"
-                      style={{
-                        background: 'linear-gradient(135deg, #E8C97A 0%, #C9A84C 60%, #A07830 100%)',
-                        WebkitBackgroundClip: 'text',
-                        WebkitTextFillColor: 'transparent',
-                        backgroundClip: 'text',
-                      }}
-                    >
-                      {brand.name.charAt(0)}
-                    </span>
+                  {brand.cover_image_url ? (
+                    <img
+                      src={brand.cover_image_url}
+                      alt=""
+                      loading="lazy"
+                      className="absolute inset-0 w-full h-full object-cover opacity-70 group-hover:opacity-90 group-hover:scale-105 transition-all duration-500"
+                    />
+                  ) : null}
+                  <div className="relative flex flex-col items-center gap-1">
+                    {brand.logo_url ? (
+                      <img
+                        src={brand.logo_url}
+                        alt={brand.name}
+                        loading="lazy"
+                        className="w-14 h-14 rounded-full object-cover border border-[rgba(201,168,76,0.3)]"
+                      />
+                    ) : (
+                      <span
+                        className="font-serif text-4xl leading-none group-hover:scale-110 transition-transform duration-300"
+                        style={{
+                          background: 'linear-gradient(135deg, #E8C97A 0%, #C9A84C 60%, #A07830 100%)',
+                          WebkitBackgroundClip: 'text',
+                          WebkitTextFillColor: 'transparent',
+                          backgroundClip: 'text',
+                        }}
+                      >
+                        {brand.name.charAt(0)}
+                      </span>
+                    )}
                     <span className="text-lg">{getTypeIcon(brand.type)}</span>
                   </div>
                 </div>
 
                 {/* Card body */}
-                <div className="flex flex-col flex-1 p-4 gap-1 justify-between">
+                <div className="flex flex-col flex-1 p-4 gap-2 justify-between">
                   <div>
                     <p className="text-[#F0EEF8] font-semibold text-sm leading-snug truncate">
                       {brand.name}
                     </p>
                     <p className="text-[10px] text-[#7A7890] uppercase tracking-wider truncate">
-                      {brand.type}
+                      {brand.type} · {productCount} product{productCount === 1 ? '' : 's'}
                     </p>
                   </div>
                   <div className="flex items-center justify-between">
@@ -313,8 +261,8 @@ export default function BrandsSection({ brands, offers = [], onBrandSelect }: Br
                     >
                       {brand.floor}
                     </span>
-                    <span className="text-[#7A7890] text-sm group-hover:text-[#C9A84C] group-hover:translate-x-0.5 transition-all duration-200">
-                      →
+                    <span className="text-xs text-[#7A7890] group-hover:text-[#C9A84C] transition-colors duration-200">
+                      Shop now →
                     </span>
                   </div>
                 </div>
@@ -325,6 +273,17 @@ export default function BrandsSection({ brands, offers = [], onBrandSelect }: Br
         ) : (
           <div className="text-center py-16 text-[#7A7890] text-sm mb-14">
             No brands match your search.
+          </div>
+        )}
+
+        {filteredBrands.length > 8 && (
+          <div className="flex justify-center mb-14">
+            <button
+              onClick={() => setShowAll((v) => !v)}
+              className="px-6 py-2 rounded-full text-xs font-medium border border-[rgba(201,168,76,0.3)] text-[#C9A84C] hover:bg-[rgba(201,168,76,0.08)] transition"
+            >
+              {showAll ? 'Show less' : `View all ${filteredBrands.length} stores`}
+            </button>
           </div>
         )}
 

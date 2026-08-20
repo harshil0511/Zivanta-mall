@@ -7,17 +7,21 @@ interface StoreState {
   brands: Brand[]
   categories: Category[]
   loading: boolean
+  hydrated: boolean
+  setHydrated: () => void
   setBrands: (brands: Brand[]) => void
   setCategories: (categories: Category[]) => void
   setLoading: (loading: boolean) => void
 
   cart: CartItem[]
-  addToCart: (product: Product, brandName: string) => void
+  addToCart: (product: Product, brandName: string, qty?: number) => void
   removeFromCart: (productId: string) => void
   updateQuantity: (productId: string, qty: number) => void
   clearCart: () => void
   cartCount: () => number
   cartTotal: () => number
+  cartQuantity: (productId: string) => number
+  syncWithCatalog: (brands: Brand[]) => void
 
   wishlist: CartItem[]
   toggleWishlist: (product: Product, brandName: string) => void
@@ -43,18 +47,23 @@ const useStore = create<StoreState>()(
       brands: [],
       categories: [],
       loading: true,
-      setBrands: (brands) => set({ brands }),
+      hydrated: false,
+      setHydrated: () => set({ hydrated: true }),
+      setBrands: (brands) => {
+        set({ brands })
+        get().syncWithCatalog(brands)
+      },
       setCategories: (categories) => set({ categories }),
       setLoading: (loading) => set({ loading }),
 
       cart: [],
-      addToCart(product, brandName) {
+      addToCart(product, brandName, qty = 1) {
         const { cart } = get()
         const existing = cart.find(i => i.id === product.id)
         if (existing) {
-          set({ cart: cart.map(i => i.id === product.id ? { ...i, quantity: i.quantity + 1 } : i) })
+          set({ cart: cart.map(i => i.id === product.id ? { ...i, ...product, brandName, quantity: i.quantity + qty } : i) })
         } else {
-          set({ cart: [...cart, { ...product, brandName, quantity: 1 }] })
+          set({ cart: [...cart, { ...product, brandName, quantity: qty }] })
         }
       },
       removeFromCart(productId) {
@@ -70,6 +79,31 @@ const useStore = create<StoreState>()(
         const price = parseFloat(String(item.price).replace(/[$,]/g, '')) || 0
         return total + price * item.quantity
       }, 0),
+      cartQuantity: (productId) => get().cart.find(i => i.id === productId)?.quantity ?? 0,
+
+      // Keeps the persisted cart/wishlist in step with the live catalogue:
+      // items the admin edited are refreshed, items removed are dropped.
+      syncWithCatalog(brands) {
+        if (brands.length === 0) return
+        const catalog = new Map<string, { product: Product; brandName: string }>()
+        brands.forEach(brand => {
+          if (brand.is_active === false) return
+          brand.products?.forEach(product => catalog.set(product.id, { product, brandName: brand.name }))
+        })
+
+        const reconcile = <T extends CartItem>(items: T[]): T[] =>
+          items.reduce<T[]>((acc, item) => {
+            const match = catalog.get(item.id)
+            if (match) acc.push({ ...item, ...match.product, brandName: match.brandName })
+            return acc
+          }, [])
+
+        const { cart, wishlist } = get()
+        const nextCart = reconcile(cart)
+        const nextWishlist = reconcile(wishlist)
+        if (JSON.stringify(nextCart) !== JSON.stringify(cart)) set({ cart: nextCart })
+        if (JSON.stringify(nextWishlist) !== JSON.stringify(wishlist)) set({ wishlist: nextWishlist })
+      },
 
       wishlist: [],
       toggleWishlist(product, brandName) {
@@ -93,6 +127,7 @@ const useStore = create<StoreState>()(
     {
       name: 'zivanta-store',
       partialize: (state) => ({ cart: state.cart, wishlist: state.wishlist }),
+      onRehydrateStorage: () => (state) => state?.setHydrated(),
     }
   )
 )
